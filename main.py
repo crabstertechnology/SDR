@@ -336,7 +336,7 @@ env = SimpleEnv(leads)
 def generate_agent_message(lead_name: str, channel: str, topic: str = "a quick intro") -> str:
     prompt = (
     f"{PERSONA_INSTRUCTION}\n\n"
-    f"Write a concise, {channel}-appropriate outreach message (maximum 2 sentences) to {lead_name} "
+    f"Write a concise, {channel}-appropriate outreach message to {lead_name} "
     f"about {topic}. Use a friendly, professional, and approachable tone. "
     f"Personalize the message naturally (mention their name if possible), "
     f"highlight a benefit or point of interest, and avoid sounding pushy or salesy. "
