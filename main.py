@@ -1,7 +1,7 @@
 """
 Interactive SDR Simulator with real Email send/receive capability.
-Enhanced with product-specific messaging and negotiator agent.
-Modified with static email settings and combined generate/send logic.
+Enhanced with product-specific messaging and AI-powered negotiator agent.
+Modified with static email settings and intelligent deal closure logic.
 """
 
 import os
@@ -195,33 +195,6 @@ try:
         )
         conn.commit()
     else:
-        st.info("📭 No pending replies. New customer replies will appear here for manual negotiation.")
-    
-    st.markdown("---")
-    st.markdown("**Quick-reply examples (for testing):**")
-    col_a, col_b = st.columns(2)
-    
-    with col_a:
-        if st.button("✅ Accept Deal"): 
-            st.session_state["pending_reply"] = "Yes, I'll take it at that price. Let's proceed!"
-            st.rerun()
-        if st.button("💬 Show Interest"): 
-            st.session_state["pending_reply"] = "This looks interesting. Can you tell me more about the features?"
-            st.rerun()
-        if st.button("📅 Book Meeting"): 
-            st.session_state["pending_reply"] = "Let's schedule a call to discuss this further."
-            st.rerun()
-    
-    with col_b:
-        if st.button("💸 Price Objection"): 
-            st.session_state["pending_reply"] = "The price seems a bit high. Can you do better? My budget is around ₹50,000."
-            st.rerun()
-        if st.button("❌ Reject"): 
-            st.session_state["pending_reply"] = "Not interested, thanks."
-            st.rerun()
-        if st.button("🤔 Neutral"): 
-            st.session_state["pending_reply"] = "I need to think about this."
-            st.rerun()
         existing_col_names = [col[1] for col in cols]
         if len(existing_col_names) < len(expected_col_names):
             # Add missing columns
@@ -478,153 +451,256 @@ def generate_product_intro_message(lead_name: str, channel: str) -> Tuple[str, s
     return message, selected_product
 
 # ---------------------------
-# ENHANCED NEGOTIATOR MESSAGE GENERATOR WITH PROFIT MARGINS
+# AI-POWERED INTELLIGENT SENTIMENT ANALYZER
 # ---------------------------
-def generate_negotiator_message(lead_name: str, reply_text: str, product_name: str, current_price: float, lead_email: str) -> Tuple[str, float]:
-    """Generate negotiator response with price adjustment and profit margin protection"""
+def analyze_customer_sentiment(reply_text: str) -> Dict[str, any]:
+    """Use AI to analyze customer sentiment and intent"""
+    
+    if COHERE_INSTALLED and COHERE_API_KEY:
+        try:
+            prompt = (
+                f"Analyze this customer reply for sales negotiation context:\n\n"
+                f"Customer Reply: \"{reply_text}\"\n\n"
+                f"Please analyze and respond with ONLY a JSON object containing:\n"
+                f"1. sentiment: 'positive', 'negative', or 'neutral'\n"
+                f"2. intent: 'buy_ready', 'price_concern', 'need_info', 'reject', 'schedule_call', 'neutral'\n"
+                f"3. urgency: 'high', 'medium', 'low'\n"
+                f"4. price_sensitivity: 'high', 'medium', 'low'\n"
+                f"5. confidence: float between 0.0-1.0\n\n"
+                f"Example: {{\"sentiment\":\"positive\",\"intent\":\"buy_ready\",\"urgency\":\"high\",\"price_sensitivity\":\"low\",\"confidence\":0.85}}\n\n"
+                f"Return ONLY the JSON object, no other text."
+            )
+            
+            client = cohere.Client(COHERE_API_KEY)
+            resp = client.chat(model=PRIMARY_MODEL, message=prompt, temperature=0.3)
+            
+            # Try to parse JSON response
+            import json
+            try:
+                analysis = json.loads(resp.text.strip())
+                return analysis
+            except json.JSONDecodeError:
+                # Fallback if JSON parsing fails
+                pass
+                
+        except Exception as e:
+            st.warning(f"AI sentiment analysis failed: {e}")
+    
+    # Fallback rule-based analysis
+    reply_lower = reply_text.lower()
+    
+    # Determine sentiment
+    positive_words = ["yes", "interested", "great", "good", "excellent", "perfect", "agree", "ok", "sure", "definitely"]
+    negative_words = ["no", "not interested", "expensive", "can't", "don't", "reject", "pass"]
+    
+    sentiment = "neutral"
+    if any(word in reply_lower for word in positive_words):
+        sentiment = "positive"
+    elif any(word in reply_lower for word in negative_words):
+        sentiment = "negative"
+    
+    # Determine intent
+    intent = "neutral"
+    if any(word in reply_lower for word in ["buy", "purchase", "take it", "deal", "sold", "yes let's do"]):
+        intent = "buy_ready"
+    elif any(word in reply_lower for word in ["price", "cost", "budget", "expensive", "cheaper", "discount"]):
+        intent = "price_concern"
+    elif any(word in reply_lower for word in ["more info", "tell me more", "details", "specs", "features"]):
+        intent = "need_info"
+    elif any(word in reply_lower for word in ["not interested", "no thanks", "reject", "pass"]):
+        intent = "reject"
+    elif any(word in reply_lower for word in ["call", "meeting", "schedule", "discuss", "talk"]):
+        intent = "schedule_call"
+    
+    return {
+        "sentiment": sentiment,
+        "intent": intent,
+        "urgency": "medium",
+        "price_sensitivity": "medium",
+        "confidence": 0.7
+    }
+
+# ---------------------------
+# ENHANCED AI-POWERED NEGOTIATOR WITH INTELLIGENT RESPONSES
+# ---------------------------
+def generate_intelligent_negotiator_message(lead_name: str, reply_text: str, product_name: str, current_price: float, lead_email: str) -> Tuple[str, float, str]:
+    """Generate intelligent negotiator response based on AI sentiment analysis"""
+    
+    # Analyze customer sentiment and intent
+    analysis = analyze_customer_sentiment(reply_text)
+    sentiment = analysis.get("sentiment", "neutral")
+    intent = analysis.get("intent", "neutral")
+    urgency = analysis.get("urgency", "medium")
+    price_sensitivity = analysis.get("price_sensitivity", "medium")
+    
     product_info = PRODUCTS.get(product_name, {})
     base_price = product_info.get("base_price", current_price)
     min_price = product_info.get("min_price", current_price * 0.8)
     
     # Calculate profit margins
     cost_price = min_price * 0.7  # Assuming cost is 70% of minimum price
-    current_profit_margin = ((current_price - cost_price) / current_price) * 100
-    min_profit_margin = ((min_price - cost_price) / min_price) * 100
     
-    # Analyze the reply to determine price strategy
-    reply_lower = reply_text.lower()
+    # Determine response strategy and new price based on AI analysis
+    new_price = current_price
+    deal_status = "ongoing"  # ongoing, closed_won, closed_lost
     
-    # Extract any price mentioned in the reply
-    import re
-    price_matches = re.findall(r'₹?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)', reply_text)
-    customer_price = None
-    if price_matches:
-        try:
-            # Take the largest number as potential price
-            customer_price = max([float(p.replace(',', '')) for p in price_matches])
-        except:
-            customer_price = None
-    
-    # Determine new offer price with profit margin protection
-    if customer_price and customer_price >= min_price:
-        # Customer mentioned a reasonable price
-        new_price = max(customer_price, min_price)
-        price_strategy = "accept_customer_price"
-    elif "expensive" in reply_lower or "budget" in reply_lower or "price" in reply_lower:
-        # Customer objects to price - offer discount but protect margins
-        if current_price > min_price * 1.2:  # Only discount if we have room
-            discount = random.uniform(0.08, 0.15)  # 8-15% discount
-            new_price = max(current_price * (1 - discount), min_price)
+    if intent == "buy_ready" and sentiment == "positive":
+        # Customer is ready to buy - close the deal
+        deal_status = "closed_won"
+        new_price = current_price  # Keep current offer
+        
+    elif intent == "reject" and sentiment == "negative":
+        # Customer rejected - end gracefully
+        deal_status = "closed_lost"
+        new_price = current_price
+        
+    elif intent == "price_concern":
+        # Customer has price concerns - negotiate
+        if price_sensitivity == "high":
+            discount = random.uniform(0.10, 0.20)  # 10-20% discount
         else:
-            discount = random.uniform(0.02, 0.05)  # Small discount near minimum
-            new_price = max(current_price * (1 - discount), min_price)
-        price_strategy = "discount_offer"
-    elif any(word in reply_lower for word in ["interested", "good", "like", "tell me more"]):
-        # Customer shows interest - hold price or small discount
-        discount = random.uniform(0.02, 0.08)  # 2-8% discount
+            discount = random.uniform(0.05, 0.12)  # 5-12% discount
         new_price = max(current_price * (1 - discount), min_price)
-        price_strategy = "hold_price"
+        
+    elif intent == "need_info":
+        # Customer needs more information
+        discount = random.uniform(0.02, 0.08)  # Small discount to sweeten
+        new_price = max(current_price * (1 - discount), min_price)
+        
+    elif intent == "schedule_call":
+        # Customer wants to schedule a call
+        discount = random.uniform(0.03, 0.10)  # Moderate discount
+        new_price = max(current_price * (1 - discount), min_price)
+        
     else:
-        # Neutral response - moderate discount
-        discount = random.uniform(0.05, 0.10)  # 5-10% discount
+        # Neutral response
+        discount = random.uniform(0.05, 0.10)
         new_price = max(current_price * (1 - discount), min_price)
-        price_strategy = "moderate_discount"
     
     new_price = round(new_price, -2)  # Round to nearest 100
     new_profit_margin = ((new_price - cost_price) / new_price) * 100
     
     if COHERE_INSTALLED and COHERE_API_KEY:
         try:
-            # Add profit margin context to the prompt
-            margin_info = f"Maintain at least {min_profit_margin:.1f}% profit margin. Current offer maintains {new_profit_margin:.1f}% margin."
-            
-            prompt = (
-                f"You are a skilled sales negotiator for {product_name}. "
-                f"Customer {lead_name} replied: \"{reply_text}\" "
-                f"Current offer: ₹{current_price:,.0f}, New offer: ₹{new_price:,.0f} "
-                f"Strategy: {price_strategy}. {margin_info} "
-                f"Write a persuasive, warm response (2-3 sentences) that: "
-                f"1) Acknowledges their concern positively "
-                f"2) Presents the new price of ₹{new_price:,.0f} as a special offer "
-                f"3) Highlights value and creates urgency "
-                f"4) Asks for decision or next step "
-                f"Keep it conversational and professional. End with: Best regards, Sasitharan"
+            # Create context-aware prompt based on AI analysis
+            context = (
+                f"Customer sentiment: {sentiment}, Intent: {intent}, "
+                f"Urgency: {urgency}, Price sensitivity: {price_sensitivity}"
             )
+            
+            if deal_status == "closed_won":
+                prompt = (
+                    f"The customer {lead_name} has agreed to buy the {product_name} at ₹{current_price:,.0f}. "
+                    f"Their reply: \"{reply_text}\" indicates they're ready to proceed. "
+                    f"Write a warm, professional closing message that:\n"
+                    f"1. Thanks them for their decision\n"
+                    f"2. Confirms the final price of ₹{current_price:,.0f}\n"
+                    f"3. Mentions next steps for delivery/payment\n"
+                    f"4. Expresses gratitude and excitement\n"
+                    f"Keep it concise and enthusiastic. End with: Best regards, Sasitharan"
+                )
+                
+            elif deal_status == "closed_lost":
+                prompt = (
+                    f"The customer {lead_name} has declined the {product_name} offer. "
+                    f"Their reply: \"{reply_text}\" indicates they're not interested. "
+                    f"Write a graceful, professional closing message that:\n"
+                    f"1. Thanks them for their time and consideration\n"
+                    f"2. Respects their decision\n"
+                    f"3. Leaves the door open for future opportunities\n"
+                    f"4. Maintains a positive, understanding tone\n"
+                    f"Keep it brief and respectful. End with: Best regards, Sasitharan"
+                )
+                
+            else:
+                # Ongoing negotiation
+                margin_info = f"Maintain at least {((min_price - cost_price) / min_price) * 100:.1f}% profit margin. New offer maintains {new_profit_margin:.1f}% margin."
+                
+                prompt = (
+                    f"You are negotiating with customer {lead_name} for a {product_name}. "
+                    f"Customer analysis: {context}. Customer replied: \"{reply_text}\" "
+                    f"Current offer: ₹{current_price:,.0f}, New strategic offer: ₹{new_price:,.0f}. "
+                    f"{margin_info}\n\n"
+                    f"Write a persuasive, contextually appropriate response that:\n"
+                    f"1. Acknowledges their specific concern/interest based on their sentiment\n"
+                    f"2. Presents the new price naturally and persuasively\n"
+                    f"3. Addresses their intent (price concern, need info, etc.)\n"
+                    f"4. Creates appropriate urgency without being pushy\n"
+                    f"5. Asks for decision or next step\n\n"
+                    f"Keep it conversational, empathetic, and professional (2-3 sentences). "
+                    f"End with: Best regards, Sasitharan"
+                )
             
             client = cohere.Client(COHERE_API_KEY)
             resp = client.chat(model=PRIMARY_MODEL, message=prompt, temperature=0.7)
+            
             if resp.text.strip():
                 # Update lead negotiation state
+                stage = "closed_won" if deal_status == "closed_won" else "closed_lost" if deal_status == "closed_lost" else "negotiating"
                 ensure_lead_exists_in_db_only(conn, lead_name, lead_email, product_name, new_price)
-                return resp.text.strip(), new_price
+                return resp.text.strip(), new_price, deal_status
+                
         except Exception as e:
-            st.warning(f"Cohere error: {e}")
+            st.warning(f"Cohere error in negotiation: {e}")
     
-    # Fallback negotiator response with profit margin awareness
-    margin_comment = "This is my best price maintaining quality" if new_price <= min_price * 1.1 else "I can offer you this special price"
-    
-    responses_by_strategy = {
-        "accept_customer_price": [
-            f"Hi {lead_name}, that works perfectly! ₹{new_price:,.0f} is a fair price for this {product_name}. {margin_comment}. Shall we move forward?",
-            f"Excellent point, {lead_name}! I can do ₹{new_price:,.0f} for you. {margin_comment}. Ready to finalize this?"
-        ],
-        "discount_offer": [
-            f"I understand your budget concern, {lead_name}. Let me offer you ₹{new_price:,.0f} - {margin_comment}. How does that work for you?",
-            f"Great point about the budget, {lead_name}. I can bring it down to ₹{new_price:,.0f}. {margin_comment}. Is this more workable?"
-        ],
-        "hold_price": [
-            f"I'm glad you're interested, {lead_name}! At ₹{new_price:,.0f}, this {product_name} offers excellent value. {margin_comment}. Shall we proceed?",
-            f"Perfect, {lead_name}! ₹{new_price:,.0f} for this {product_name} is an excellent investment. {margin_comment}. Ready to move forward?"
-        ],
-        "moderate_discount": [
-            f"Thanks for your interest, {lead_name}! I can offer you ₹{new_price:,.0f} - {margin_comment}. What do you think?",
-            f"Hi {lead_name}, I can work with ₹{new_price:,.0f} for you. {margin_comment} for this quality. Interested?"
+    # Fallback messages based on deal status
+    if deal_status == "closed_won":
+        message = (
+            f"Fantastic, {lead_name}! Thank you for choosing the {product_name} at ₹{current_price:,.0f}. "
+            f"I'll send you the payment details and delivery information shortly. "
+            f"You've made an excellent choice!\n\nBest regards,\nSasitharan"
+        )
+        
+    elif deal_status == "closed_lost":
+        message = (
+            f"Hi {lead_name}, I completely understand your decision. "
+            f"Thank you for taking the time to consider our {product_name}. "
+            f"If your needs change in the future, please don't hesitate to reach out. "
+            f"We're always here to help!\n\nBest regards,\nSasitharan"
+        )
+        
+    else:
+        # Ongoing negotiation fallback
+        responses = [
+            f"Hi {lead_name}, I appreciate your feedback! Let me offer you ₹{new_price:,.0f} for the {product_name}. This is a great value for the quality you're getting. What do you think?",
+            f"Thank you for your interest, {lead_name}! I can work with ₹{new_price:,.0f} for you on this {product_name}. This maintains excellent quality while fitting your budget. Shall we move forward?",
+            f"I understand your concerns, {lead_name}. How about ₹{new_price:,.0f} for the {product_name}? This is my best offer while ensuring you get premium quality. Ready to proceed?"
         ]
-    }
-    
-    response_options = responses_by_strategy.get(price_strategy, responses_by_strategy["moderate_discount"])
-    message = random.choice(response_options) + f"\n\nBest regards,\nSasitharan"
+        message = random.choice(responses) + f"\n\nBest regards,\nSasitharan"
     
     # Update lead negotiation state
+    stage = "closed_won" if deal_status == "closed_won" else "closed_lost" if deal_status == "closed_lost" else "negotiating"
     ensure_lead_exists_in_db_only(conn, lead_name, lead_email, product_name, new_price)
     
-    return message, new_price
+    return message, new_price, deal_status
 
 # ---------------------------
-# ENHANCED REPLY CLASSIFIER
+# ENHANCED REPLY CLASSIFIER (now uses AI analysis)
 # ---------------------------
 def classify_reply(text: str) -> str:
+    """Classify reply using AI sentiment analysis"""
     if not text or text.strip() == "":
         return "ignore"
     
-    t = text.lower()
+    analysis = analyze_customer_sentiment(text)
+    intent = analysis.get("intent", "neutral")
     
-    # Check for deal closure
-    if any(kw in t for kw in ["buy", "purchase", "take it", "deal", "sold", "yes let's do", "i'll take", "agreed"]):
-        return "deal_closed"
+    # Map AI intents to classifications
+    intent_mapping = {
+        "buy_ready": "deal_closed",
+        "reject": "reject",
+        "price_concern": "price_negotiation",
+        "need_info": "interested",
+        "schedule_call": "book",
+        "neutral": "neutral"
+    }
     
-    # Check for booking/meeting
-    if any(kw in t for kw in ["book", "schedule", "call", "meeting", "yes", "ok", "tomorrow", "next week"]):
-        return "book"
-    
-    # Check for price negotiation/objection
-    if any(kw in t for kw in ["price", "cost", "budget", "expensive", "cheaper", "discount", "₹", "rupees"]):
-        return "price_negotiation"
-    
-    # Check for product interest
-    if any(kw in t for kw in ["interested", "tell me more", "more info", "details", "specs", "features"]):
-        return "interested"
-    
-    # Check for rejection
-    if any(kw in t for kw in ["no", "not interested", "don't want", "no thanks", "uninterested", "pass"]):
-        return "reject"
-    
-    return "neutral"
+    return intent_mapping.get(intent, "neutral")
 
 # ---------------------------
-# DEAL QUALITY (enhanced)
+# DEAL QUALITY (enhanced with AI insights)
 # ---------------------------
-def compute_deal_quality(lead_record: Dict, classification: str, product_name: str = None) -> float:
+def compute_deal_quality(lead_record: Dict, classification: str, product_name: str = None, ai_analysis: Dict = None) -> float:
     role = str(lead_record.get("lead_role", "")).lower()
     role_weight = 0.5 if any(k in role for k in ["cto", "founder", "ceo", "manager", "director"]) else 0.3
     
@@ -649,7 +725,19 @@ def compute_deal_quality(lead_record: Dict, classification: str, product_name: s
         if base_price > 100000:  # High-value products
             product_bonus = 0.1
     
-    return max(0.0, min(1.0, role_weight + prior + class_bonus + product_bonus))
+    # AI analysis bonus
+    ai_bonus = 0.0
+    if ai_analysis:
+        confidence = ai_analysis.get("confidence", 0.5)
+        urgency = ai_analysis.get("urgency", "medium")
+        if urgency == "high":
+            ai_bonus = 0.15 * confidence
+        elif urgency == "medium":
+            ai_bonus = 0.08 * confidence
+        else:
+            ai_bonus = 0.03 * confidence
+    
+    return max(0.0, min(1.0, role_weight + prior + class_bonus + product_bonus + ai_bonus))
 
 # ---------------------------
 # EMAIL HELPERS (SMTP & IMAP) - unchanged
@@ -782,10 +870,10 @@ def map_reply_to_lead(reply: Dict, leads_list: List[Dict]) -> Optional[Dict]:
     return None
 
 # ---------------------------
-# ENHANCED Auto-refresh inbox function
+# ENHANCED Auto-refresh inbox function with AI-powered responses
 # ---------------------------
 def auto_check_inbox():
-    """Function to automatically check inbox and process replies with negotiation logic"""
+    """Function to automatically check inbox and process replies with AI negotiation logic"""
     global leads  # Make leads accessible in this function
     
     ses = STATIC_EMAIL_SETTINGS
@@ -834,26 +922,33 @@ def auto_check_inbox():
                 # Get current negotiation state
                 negotiation_state = get_lead_negotiation_state(conn, lead_email)
                 
-                # Classify the reply
+                # Analyze customer sentiment with AI
+                ai_analysis = analyze_customer_sentiment(reply_body)
+                
+                # Classify the reply using AI analysis
                 classification = classify_reply(reply_body)
                 
                 # Store reply for manual processing - NO AUTO-RESPONSE
                 current_product = negotiation_state["product"] if negotiation_state else None
                 current_price = negotiation_state["price"] if negotiation_state else None
                 
-                if classification == "reject":
+                # Determine deal outcome based on AI analysis
+                intent = ai_analysis.get("intent", "neutral")
+                sentiment = ai_analysis.get("sentiment", "neutral")
+                
+                if intent == "reject" and sentiment == "negative":
                     # Customer rejected - close the deal
                     reward = -2.0
                     deal_closed = -1  # Mark as rejected
-                    negotiation_stage = "rejected"
+                    negotiation_stage = "closed_lost"
                     
-                elif classification == "deal_closed":
+                elif intent == "buy_ready" and sentiment == "positive":
                     # Customer agreed to buy
                     reward = 5.0
                     deal_closed = 1
                     negotiation_stage = "closed_won"
                     
-                elif classification in ["price_negotiation", "interested"] and current_product:
+                elif intent in ["price_concern", "need_info", "schedule_call"] and current_product:
                     # Continue negotiation (but don't auto-respond)
                     reward = 1.0
                     deal_closed = 0
@@ -865,8 +960,8 @@ def auto_check_inbox():
                     deal_closed = 0
                     negotiation_stage = negotiation_state["stage"] if negotiation_state else "initial"
                 
-                # Compute deal quality
-                deal_quality = compute_deal_quality(lead, classification, current_product)
+                # Compute deal quality with AI insights
+                deal_quality = compute_deal_quality(lead, classification, current_product, ai_analysis)
                 
                 # Get the last agent message for logging
                 agent_message = ""
@@ -894,7 +989,7 @@ def auto_check_inbox():
                 
                 processed += 1
                 
-                # Show the processed reply
+                # Show the processed reply with AI insights
                 status_emoji = {
                     "deal_closed": "🎉",
                     "reject": "❌", 
@@ -906,12 +1001,19 @@ def auto_check_inbox():
                 
                 with st.expander(f"{status_emoji} New Reply from {lead_name} - {classification.upper().replace('_', ' ')}", expanded=True):
                     st.markdown(f"**From:** {rep.get('from')}  \n**Subject:** {rep.get('subject')}")
-                    st.write("**Reply:**")
-                    st.write(reply_body[:1000])
-                    if current_product:
-                        st.info(f"**Product:** {current_product} | **Current Price:** ₹{current_price:,.0f}" if current_price else f"**Product:** {current_product}")
                     
-                    # Store this reply for manual response generation
+                    # Show AI analysis insights
+                    col_left, col_right = st.columns(2)
+                    with col_left:
+                        st.info(f"**AI Analysis:**\n- Sentiment: {sentiment.title()}\n- Intent: {intent.replace('_', ' ').title()}")
+                    with col_right:
+                        if current_product:
+                            st.info(f"**Product:** {current_product}\n**Current Price:** ₹{current_price:,.0f}" if current_price else f"**Product:** {current_product}")
+                    
+                    st.write("**Customer Reply:**")
+                    st.write(reply_body[:1000])
+                    
+                    # Store this reply for manual response generation with AI analysis
                     st.session_state[f"pending_reply_{lead_email}"] = {
                         "lead_name": lead_name,
                         "lead_email": lead_email,
@@ -919,7 +1021,8 @@ def auto_check_inbox():
                         "classification": classification,
                         "product": current_product,
                         "price": current_price,
-                        "subject": rep.get('subject', '')
+                        "subject": rep.get('subject', ''),
+                        "ai_analysis": ai_analysis  # Include AI analysis
                     }
         
         return processed
@@ -928,8 +1031,8 @@ def auto_check_inbox():
 # ---------------------------
 # STREAMLIT UI
 # ---------------------------
-st.set_page_config(page_title="Enhanced SDR Simulator — Product Sales & Negotiation", layout="wide")
-st.title("🤖 Enhanced SDR Simulator — Product Sales with AI Negotiator")
+st.set_page_config(page_title="AI-Powered SDR Simulator — Intelligent Sales Negotiation", layout="wide")
+st.title("🤖 AI-Powered SDR Simulator — Intelligent Sales Negotiation with Cohere")
 
 # Initialize session state
 if "pending_reply" not in st.session_state:
@@ -953,6 +1056,15 @@ if (current_time - st.session_state["last_inbox_check"]) >= 10 and st.session_st
 
 # Sidebar - Show static email settings and product info
 with st.sidebar:
+    st.header("🧠 AI Features")
+    if COHERE_INSTALLED and COHERE_API_KEY:
+        st.success("✅ Cohere AI Enabled")
+        st.info("• Intelligent sentiment analysis\n• Context-aware responses\n• Smart deal closure detection\n• Adaptive negotiation strategies")
+    else:
+        st.warning("⚠️ Cohere AI Disabled")
+        st.info("Set COHERE_API_KEY environment variable to enable AI features")
+    
+    st.markdown("---")
     st.header("🛍️ Product Catalog")
     
     # Display products with prices
@@ -1083,11 +1195,11 @@ with col1:
         subject = st.text_input("Email subject", value="Special offer just for you")
         
         # Generate & Send Product Introduction
-        if st.button("🎯 Generate & Send Product Introduction", type="primary"):
+        if st.button("🎯 Generate & Send AI-Powered Introduction", type="primary"):
             if not lead_email:
                 st.error("Please provide the lead's email.")
             else:
-                with st.spinner("Generating product introduction..."):
+                with st.spinner("Generating AI-powered product introduction..."):
                     if product_mode == "Auto (Random)":
                         body, selected_product = generate_product_intro_message(lead_name, "Email")
                     else:
@@ -1115,7 +1227,7 @@ with col1:
                             body = f"Hi {lead_name},\n\n{hook}\n\nBest regards,\nSasitharan"
                 
                 # Send email
-                with st.spinner("Sending product introduction..."):
+                with st.spinner("Sending AI-powered introduction..."):
                     ses = STATIC_EMAIL_SETTINGS
                     ok, info = send_email_smtp(
                         ses["smtp_server"],
@@ -1129,7 +1241,7 @@ with col1:
                     )
                     
                     if ok:
-                        st.success(f"✅ Product introduction sent for {selected_product}!")
+                        st.success(f"✅ AI-powered introduction sent for {selected_product}!")
                         
                         # Update lead in database with product info
                         ensure_lead_exists_in_db_only(conn, lead_name, lead_email, selected_product, PRODUCTS[selected_product]["base_price"])
@@ -1167,7 +1279,7 @@ with col1:
             st.rerun()
 
 with col2:
-    st.header("📨 Manual Negotiation Center")
+    st.header("🧠 AI-Powered Negotiation Center")
     
     # Manual check inbox button
     if st.button("🔍 Manual Inbox Check"):
@@ -1179,14 +1291,14 @@ with col2:
     # Auto-refresh status
     if st.session_state.get("auto_refresh_enabled"):
         st.success("🔄 Auto-refresh is ENABLED (every 10 seconds)")
-        st.info("📧 New replies will be detected automatically - respond manually below")
+        st.info("🧠 New replies analyzed with AI - respond intelligently below")
     else:
         st.warning("⏸️ Auto-refresh is DISABLED")
     
     st.markdown("---")
     
-    # Manual Negotiator Response Section
-    st.subheader("🤖 AI Negotiator Responses")
+    # AI Negotiator Response Section
+    st.subheader("🤖 Intelligent AI Responses")
     
     # Check for pending replies that need responses
     pending_replies = []
@@ -1195,7 +1307,7 @@ with col2:
             pending_replies.append(st.session_state[key])
     
     if pending_replies:
-        st.success(f"📬 {len(pending_replies)} reply(s) ready for negotiation!")
+        st.success(f"📬 {len(pending_replies)} reply(s) ready for intelligent negotiation!")
         
         for reply_data in pending_replies:
             lead_name = reply_data["lead_name"]
@@ -1204,49 +1316,68 @@ with col2:
             product = reply_data["product"]
             current_price = reply_data["price"]
             reply_body = reply_data["reply_body"]
+            ai_analysis = reply_data.get("ai_analysis", {})
             
-            with st.expander(f"🎯 Negotiate with {lead_name} - {classification.upper().replace('_', ' ')}", expanded=True):
-                st.write(f"**Product:** {product}")
-                if current_price:
-                    # Calculate profit margin info
-                    if product and product in PRODUCTS:
-                        min_price = PRODUCTS[product]["min_price"]
-                        cost_price = min_price * 0.7
-                        profit_margin = ((current_price - cost_price) / current_price) * 100
-                        st.info(f"**Current Price:** ₹{current_price:,.0f} | **Profit Margin:** {profit_margin:.1f}%")
-                    else:
-                        st.info(f"**Current Price:** ₹{current_price:,.0f}")
+            with st.expander(f"🎯 AI Negotiate with {lead_name} - {classification.upper().replace('_', ' ')}", expanded=True):
+                # Show AI analysis and product info
+                col_ai, col_product = st.columns(2)
+                
+                with col_ai:
+                    st.info(f"**🧠 AI Analysis:**\n- Sentiment: {ai_analysis.get('sentiment', 'unknown').title()}\n- Intent: {ai_analysis.get('intent', 'unknown').replace('_', ' ').title()}\n- Urgency: {ai_analysis.get('urgency', 'unknown').title()}\n- Price Sensitivity: {ai_analysis.get('price_sensitivity', 'unknown').title()}")
+                
+                with col_product:
+                    st.write(f"**Product:** {product}")
+                    if current_price:
+                        # Calculate profit margin info
+                        if product and product in PRODUCTS:
+                            min_price = PRODUCTS[product]["min_price"]
+                            cost_price = min_price * 0.7
+                            profit_margin = ((current_price - cost_price) / current_price) * 100
+                            st.info(f"**Current Price:** ₹{current_price:,.0f}\n**Profit Margin:** {profit_margin:.1f}%")
+                        else:
+                            st.info(f"**Current Price:** ₹{current_price:,.0f}")
                 
                 st.write("**Customer Reply:**")
                 st.write(f'"{reply_body[:300]}..."' if len(reply_body) > 300 else f'"{reply_body}"')
                 
-                # Generate negotiation response
+                # Generate intelligent AI response
                 col_gen, col_send = st.columns(2)
                 
                 with col_gen:
-                    if st.button(f"🧠 Generate AI Response", key=f"gen_{lead_email}"):
+                    if st.button(f"🧠 Generate Intelligent AI Response", key=f"gen_{lead_email}"):
                         if product and current_price:
-                            with st.spinner("Generating negotiation response..."):
+                            with st.spinner("Generating intelligent AI response..."):
                                 try:
-                                    response_msg, new_price = generate_negotiator_message(
+                                    response_msg, new_price, deal_status = generate_intelligent_negotiator_message(
                                         lead_name, reply_body, product, current_price, lead_email
                                     )
                                     
-                                    # Store the generated response
+                                    # Store the generated response with deal status
                                     st.session_state[f"generated_response_{lead_email}"] = {
                                         "message": response_msg,
                                         "new_price": new_price,
-                                        "subject": f"Re: {reply_data.get('subject', 'Our conversation')}"
+                                        "deal_status": deal_status,
+                                        "subject": f"Re: {reply_data.get('subject', 'Our conversation')}",
+                                        "ai_analysis": ai_analysis
                                     }
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Error generating response: {e}")
+                                    st.error(f"Error generating AI response: {e}")
                         else:
                             st.error("Missing product or price information")
                 
                 # Show generated response if available
                 if f"generated_response_{lead_email}" in st.session_state:
                     response_data = st.session_state[f"generated_response_{lead_email}"]
+                    deal_status = response_data.get("deal_status", "ongoing")
+                    
+                    # Show deal status indicator
+                    if deal_status == "closed_won":
+                        st.success("🎉 **DEAL WON** - Customer ready to buy!")
+                    elif deal_status == "closed_lost":
+                        st.error("❌ **DEAL LOST** - Customer not interested")
+                    else:
+                        st.info("🔄 **ONGOING** - Continue negotiation")
                     
                     st.write("**Generated AI Response:**")
                     st.text_area("AI Response:", value=response_data["message"], height=150, key=f"preview_{lead_email}")
@@ -1258,8 +1389,8 @@ with col2:
                         st.markdown(f"**Price Change:** <span style='color:{price_color}'>₹{price_change:+,.0f}</span> (New: ₹{response_data['new_price']:,.0f})", unsafe_allow_html=True)
                     
                     with col_send:
-                        if st.button(f"📤 Send Response", key=f"send_{lead_email}", type="primary"):
-                            with st.spinner("Sending negotiation response..."):
+                        if st.button(f"📤 Send AI Response", key=f"send_{lead_email}", type="primary"):
+                            with st.spinner("Sending intelligent AI response..."):
                                 ses = STATIC_EMAIL_SETTINGS
                                 success, error_msg = send_email_smtp(
                                     ses["smtp_server"],
@@ -1273,7 +1404,14 @@ with col2:
                                 )
                                 
                                 if success:
-                                    st.success("✅ Negotiation response sent!")
+                                    st.success("✅ Intelligent AI response sent!")
+                                    
+                                    # Determine deal closure status for logging
+                                    deal_closed_value = 0
+                                    if deal_status == "closed_won":
+                                        deal_closed_value = 1
+                                    elif deal_status == "closed_lost":
+                                        deal_closed_value = -1
                                     
                                     # Log the sent response
                                     ts = time.time()
@@ -1281,10 +1419,19 @@ with col2:
                                         """INSERT INTO logs (ts, lead_name, channel, agent_message, human_reply, classification, 
                                            reward, deal_closed, deal_quality, product_name, current_price, negotiation_stage) 
                                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                                        (ts, lead_name, "Email", response_data["message"], "", "negotiation_response", 
-                                         0.0, 0, 0.0, product, response_data["new_price"], "negotiating"),
+                                        (ts, lead_name, "Email", response_data["message"], "", "ai_negotiation_response", 
+                                         0.0, deal_closed_value, 0.0, product, response_data["new_price"], deal_status),
                                     )
                                     conn.commit()
+                                    
+                                    # Update lead status in database
+                                    if deal_status in ["closed_won", "closed_lost"]:
+                                        cursor = conn.cursor()
+                                        cursor.execute(
+                                            "UPDATE leads SET negotiation_stage = ? WHERE email = ?",
+                                            (deal_status, lead_email)
+                                        )
+                                        conn.commit()
                                     
                                     # Clear the pending reply and generated response
                                     del st.session_state[f"pending_reply_{lead_email}"]
@@ -1300,13 +1447,40 @@ with col2:
                         del st.session_state[f"generated_response_{lead_email}"]
                     st.rerun()
     else:
-        st.info("No pending replies for negotiation.")
+        st.info("📭 No pending replies. New customer replies will appear here for AI-powered negotiation.")
+    
+    # Quick-reply testing section
+    st.markdown("---")
+    st.markdown("**🧪 Quick-reply examples (for testing AI negotiation):**")
+    col_a, col_b = st.columns(2)
+    
+    with col_a:
+        if st.button("✅ Accept Deal"): 
+            st.session_state["pending_reply"] = "Yes, I'll take it at that price. Let's proceed with the purchase!"
+            st.rerun()
+        if st.button("💬 Show Interest"): 
+            st.session_state["pending_reply"] = "This looks interesting. Can you tell me more about the features and warranty?"
+            st.rerun()
+        if st.button("📅 Book Meeting"): 
+            st.session_state["pending_reply"] = "I'm interested but would like to schedule a call to discuss this in detail."
+            st.rerun()
+    
+    with col_b:
+        if st.button("💸 Price Objection"): 
+            st.session_state["pending_reply"] = "The price seems too high for my budget. Can you do better? I was thinking around ₹50,000."
+            st.rerun()
+        if st.button("❌ Reject"): 
+            st.session_state["pending_reply"] = "Thanks, but I'm not interested in this product right now."
+            st.rerun()
+        if st.button("🤔 Need Time"): 
+            st.session_state["pending_reply"] = "I need to think about this and discuss with my team first."
+            st.rerun()
 
 # ---------------------------
-# ENHANCED METRICS
+# ENHANCED METRICS WITH AI INSIGHTS
 # ---------------------------
 st.markdown("---")
-st.header("📊 Enhanced Sales Metrics")
+st.header("📊 Enhanced AI-Powered Sales Analytics")
 
 logs_df = pd.read_sql_query("SELECT * FROM logs ORDER BY ts DESC", conn)
 total_interactions = len(logs_df)
@@ -1330,17 +1504,22 @@ if total_interactions > 0:
                 profit = deal["current_price"] - cost_price
                 total_profit += profit
 
-colA, colB, colC, colD, colE, colF = st.columns(6)
+# AI-powered metrics
+ai_responses = len(logs_df[logs_df["classification"].str.contains("ai_", na=False)]) if total_interactions > 0 else 0
+intelligent_closes = len(logs_df[(logs_df["deal_closed"] == 1) & (logs_df["classification"].str.contains("ai_", na=False))]) if total_interactions > 0 else 0
+
+colA, colB, colC, colD, colE, colF, colG = st.columns(7)
 colA.metric("Total Interactions", total_interactions)
 colB.metric("Deals Closed", deals_closed)
 colC.metric("Deals Rejected", deals_rejected)
 colD.metric("Success Rate", f"{success_rate:.1f}%")
-colE.metric("Total Revenue", f"₹{total_revenue:,.0f}")
-colF.metric("Total Profit", f"₹{total_profit:,.0f}")
+colE.metric("AI Responses", ai_responses)
+colF.metric("Total Revenue", f"₹{total_revenue:,.0f}")
+colG.metric("Total Profit", f"₹{total_profit:,.0f}")
 
-# Product-wise breakdown with profit margins
+# Enhanced analytics with AI insights
 if total_interactions > 0:
-    st.subheader("📈 Analytics Dashboard")
+    st.subheader("📈 AI-Enhanced Analytics Dashboard")
     
     col_left, col_right = st.columns(2)
     
@@ -1348,6 +1527,16 @@ if total_interactions > 0:
         st.write("**Classification Breakdown:**")
         classification_breakdown = logs_df["classification"].value_counts().rename_axis("classification").reset_index(name="count")
         st.bar_chart(classification_breakdown.set_index("classification"))
+        
+        # AI vs Manual response comparison
+        if ai_responses > 0:
+            st.write("**AI vs Manual Responses:**")
+            ai_vs_manual = {
+                "AI Responses": ai_responses,
+                "Manual Responses": total_interactions - ai_responses
+            }
+            ai_df = pd.DataFrame(list(ai_vs_manual.items()), columns=["Type", "Count"])
+            st.bar_chart(ai_df.set_index("Type"))
     
     with col_right:
         st.write("**Product Performance:**")
@@ -1355,9 +1544,16 @@ if total_interactions > 0:
         if not product_logs.empty:
             product_breakdown = product_logs["product_name"].value_counts().rename_axis("product").reset_index(name="interactions")
             st.bar_chart(product_breakdown.set_index("product"))
+        
+        # Deal closure stages
+        st.write("**Negotiation Stages:**")
+        stage_logs = logs_df[logs_df["negotiation_stage"].notna()]
+        if not stage_logs.empty:
+            stage_breakdown = stage_logs["negotiation_stage"].value_counts().rename_axis("stage").reset_index(name="count")
+            st.bar_chart(stage_breakdown.set_index("stage"))
     
-    # Profit Margin Analysis
-    st.subheader("💰 Profit Margin Analysis")
+    # Enhanced Profit Margin Analysis with AI insights
+    st.subheader("💰 AI-Enhanced Profit Analysis")
     if not closed_deals.empty:
         profit_data = []
         for _, deal in closed_deals.iterrows():
@@ -1366,17 +1562,38 @@ if total_interactions > 0:
                 cost_price = min_price * 0.7
                 profit = deal["current_price"] - cost_price
                 profit_margin = (profit / deal["current_price"]) * 100
+                is_ai_deal = "ai_" in str(deal["classification"]).lower()
                 profit_data.append({
                     "Product": deal["product_name"],
                     "Sale Price": deal["current_price"],
                     "Profit": profit,
                     "Margin %": profit_margin,
-                    "Lead": deal["lead_name"]
+                    "Lead": deal["lead_name"],
+                    "AI Assisted": "Yes" if is_ai_deal else "No",
+                    "Stage": deal.get("negotiation_stage", "unknown")
                 })
         
         if profit_data:
             profit_df = pd.DataFrame(profit_data)
             st.dataframe(profit_df, use_container_width=True)
+            
+            # Compare AI vs Manual deal performance
+            if ai_responses > 0:
+                col_ai_perf, col_manual_perf = st.columns(2)
+                
+                with col_ai_perf:
+                    ai_deals = profit_df[profit_df["AI Assisted"] == "Yes"]
+                    if not ai_deals.empty:
+                        st.write("**AI-Assisted Deal Performance:**")
+                        st.metric("Avg AI Deal Value", f"₹{ai_deals['Sale Price'].mean():,.0f}")
+                        st.metric("Avg AI Profit Margin", f"{ai_deals['Margin %'].mean():.1f}%")
+                
+                with col_manual_perf:
+                    manual_deals = profit_df[profit_df["AI Assisted"] == "No"]
+                    if not manual_deals.empty:
+                        st.write("**Manual Deal Performance:**")
+                        st.metric("Avg Manual Deal Value", f"₹{manual_deals['Sale Price'].mean():,.0f}")
+                        st.metric("Avg Manual Profit Margin", f"{manual_deals['Margin %'].mean():.1f}%")
             
             # Average profit margin by product
             avg_margins = profit_df.groupby("Product")["Margin %"].mean().reset_index()
@@ -1385,15 +1602,54 @@ if total_interactions > 0:
     else:
         st.info("No closed deals yet to analyze profit margins.")
     
-    # Recent interactions table
-    st.subheader("📋 Recent Interactions")
+    # Recent interactions table with AI insights
+    st.subheader("📋 Recent Interactions (AI-Enhanced)")
     display_df = logs_df.copy()
     display_df["time"] = pd.to_datetime(display_df["ts"], unit="s").dt.strftime("%Y-%m-%d %H:%M:%S")
+    display_df["AI_Assisted"] = display_df["classification"].str.contains("ai_", na=False)
     
     # Select relevant columns for display
-    display_columns = ["time", "lead_name", "classification", "product_name", "current_price", "negotiation_stage", "deal_closed"]
+    display_columns = ["time", "lead_name", "classification", "product_name", "current_price", "negotiation_stage", "deal_closed", "AI_Assisted"]
     available_columns = [col for col in display_columns if col in display_df.columns]
     
     st.dataframe(display_df[available_columns].head(50), use_container_width=True)
+    
+    # AI Performance Summary
+    if ai_responses > 0:
+        st.subheader("🧠 AI Performance Summary")
+        ai_success_rate = (intelligent_closes / ai_responses * 100) if ai_responses > 0 else 0
+        
+        col_ai_summary = st.columns(3)
+        with col_ai_summary[0]:
+            st.metric("AI Response Rate", f"{(ai_responses/total_interactions*100):.1f}%")
+        with col_ai_summary[1]:
+            st.metric("AI Success Rate", f"{ai_success_rate:.1f}%")
+        with col_ai_summary[2]:
+            st.metric("AI Deal Closes", intelligent_closes)
+        
+        if COHERE_INSTALLED and COHERE_API_KEY:
+            st.success("🧠 Cohere AI is actively enhancing your sales conversations with intelligent sentiment analysis and contextual responses!")
+        else:
+            st.warning("⚠️ Enable Cohere AI for even better performance with intelligent sentiment analysis and adaptive responses.")
 else:
-    st.info("No interactions yet. Send some product introductions to get started!")
+    st.info("No interactions yet. Send some AI-powered product introductions to get started!")
+
+# Add footer with AI capabilities
+st.markdown("---")
+st.markdown("### 🚀 AI-Powered Features")
+if COHERE_INSTALLED and COHERE_API_KEY:
+    st.success(
+        "✅ **Active AI Features:**\n"
+        "• Intelligent sentiment analysis of customer replies\n"
+        "• Context-aware response generation\n"
+        "• Automatic deal closure detection\n"
+        "• Adaptive pricing strategies\n"
+        "• Smart negotiation tactics based on customer intent"
+    )
+else:
+    st.error(
+        "❌ **AI Features Disabled:**\n"
+        "• Set COHERE_API_KEY environment variable to enable\n"
+        "• Get your API key from: https://dashboard.cohere.com/\n"
+        "• Restart the application after setting the key"
+    )
