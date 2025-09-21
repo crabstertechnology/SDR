@@ -1,0 +1,235 @@
+# AI-Powered SDR Simulator 🤖
+
+An intelligent Sales Development Representative (SDR) simulator that uses AI to automate product sales negotiations via email. The system features real-time email integration, intelligent sentiment analysis, and contextually-aware response generation powered by Cohere AI.
+
+## Features
+
+### 🧠 AI-Powered Intelligence
+- **Smart Sentiment Analysis**: Analyzes customer replies for sentiment, intent, urgency, and price sensitivity
+- **Contextual Response Generation**: Creates appropriate responses based on customer behavior
+- **Intelligent Deal Closure**: Automatically detects when to close deals or gracefully end conversations
+- **Adaptive Negotiation**: Adjusts pricing strategies based on customer feedback
+
+### 📧 Email Integration
+- **Real-time IMAP/SMTP**: Sends and receives emails automatically
+- **Auto-lead Addition**: Automatically adds new leads from incoming replies
+- **Email Threading**: Maintains conversation context across multiple exchanges
+
+### 🛍️ Product Management
+- **Multi-product Catalog**: Supports multiple products with pricing tiers
+- **Profit Margin Protection**: Ensures minimum profit margins during negotiations
+- **Dynamic Pricing**: AI-driven price adjustments based on customer responses
+
+### 📊 Advanced Analytics
+- **Performance Tracking**: Monitor success rates, deal values, and profit margins
+- **AI vs Manual Comparison**: Compare AI-assisted vs manual deal performance
+- **Real-time Metrics**: Live dashboard with comprehensive sales analytics
+
+## Installation
+
+### Prerequisites
+- Python 3.8+
+- Gmail account with App Password enabled
+- Cohere API key (optional but recommended for AI features)
+
+### Required Dependencies
+```bash
+pip install streamlit pandas numpy sqlite3 smtplib imaplib email cohere
+```
+
+### Environment Setup
+1. Set up Gmail App Password:
+   - Enable 2-factor authentication on your Gmail account
+   - Generate an App Password for the application
+   - Update `STATIC_EMAIL_SETTINGS` in the code with your credentials
+
+2. Configure Cohere API (recommended):
+   ```bash
+   export COHERE_API_KEY="your-cohere-api-key"
+   ```
+   Get your API key from: https://dashboard.cohere.com/
+
+## Quick Start
+
+1. **Run the Application**:
+   ```bash
+   streamlit run sdr_simulator.py
+   ```
+
+2. **Add Leads**:
+   - Use the "Add New Lead" form to create your prospect database
+   - Include lead name, role, email, and channel information
+
+3. **Send Product Introductions**:
+   - Select a lead and product
+   - Generate AI-powered introduction emails
+   - System automatically tracks negotiations
+
+4. **AI-Powered Negotiations**:
+   - System monitors incoming replies automatically
+   - AI analyzes customer sentiment and intent
+   - Generate contextually appropriate responses
+   - Automatically handle deal closures and rejections
+
+## Product Configuration
+
+Products are defined in the `PRODUCTS` dictionary with the following structure:
+
+```python
+"Product Name": {
+    "hooks": ["Sales hook 1", "Sales hook 2"],
+    "base_price": 100000,  # Starting price in INR
+    "min_price": 80000,    # Minimum acceptable price
+    "description": "Product description"
+}
+```
+
+## AI Features
+
+### Sentiment Analysis
+The system analyzes customer replies for:
+- **Sentiment**: Positive, negative, or neutral
+- **Intent**: Buy ready, price concern, need info, reject, schedule call
+- **Urgency**: High, medium, or low
+- **Price Sensitivity**: Customer's price flexibility
+
+### Response Generation
+AI generates three types of responses:
+
+1. **Deal Closure** (when customer agrees):
+   - Thanks customer for decision
+   - Confirms final price
+   - Provides next steps for payment/delivery
+
+2. **Graceful Rejection** (when customer declines):
+   - Respects customer's decision
+   - Thanks for consideration
+   - Leaves door open for future opportunities
+
+3. **Ongoing Negotiation** (for price concerns/questions):
+   - Addresses specific customer concerns
+   - Presents strategic price adjustments
+   - Maintains profit margins while maximizing deal potential
+
+## Database Schema
+
+The system uses SQLite with two main tables:
+
+### Logs Table
+- Tracks all interactions and negotiations
+- Stores AI analysis results
+- Records deal outcomes and profit margins
+
+### Leads Table
+- Manages prospect information
+- Tracks current negotiation state
+- Stores product and pricing context
+
+## Usage Examples
+
+### Basic Sales Flow
+1. Add prospect to system
+2. Send AI-generated product introduction
+3. Customer replies with interest/objection
+4. AI analyzes reply sentiment and intent
+5. Generate contextually appropriate response
+6. Continue until deal closes or customer declines
+
+### AI Response Examples
+
+**Customer says**: "Yes, I'll take it at that price"
+**AI Response**: "Fantastic! Thank you for choosing the MacBook Pro at ₹175,000. I'll send you the payment details and delivery information shortly. You've made an excellent choice!"
+
+**Customer says**: "Not interested, thanks"
+**AI Response**: "I completely understand your decision. Thank you for taking the time to consider our MacBook Pro. If your needs change in the future, please don't hesitate to reach out."
+
+**Customer says**: "Price is too high, can you do better?"
+**AI Response**: "I appreciate your feedback! Let me offer you ₹165,000 for the MacBook Pro. This maintains excellent quality while fitting your budget better. What do you think?"
+
+## Configuration
+
+### Email Settings
+Email settings are configured in `STATIC_EMAIL_SETTINGS`:
+```python
+STATIC_EMAIL_SETTINGS = {
+    "from_email": "your-email@gmail.com",
+    "password": "your-app-password",
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 465,
+    "imap_server": "imap.gmail.com",
+    "imap_port": 993,
+    "use_ssl": True,
+}
+```
+
+### AI Configuration
+```python
+COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
+PRIMARY_MODEL = "command-r7b-12-2024"
+FALLBACK_MODEL = "command"
+```
+
+## Performance Metrics
+
+The system tracks comprehensive metrics including:
+- Total interactions and conversion rates
+- AI vs manual response performance
+- Profit margins and revenue generation
+- Deal closure analysis by product and lead
+- Negotiation stage progression
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Email Authentication Errors**:
+   - Ensure Gmail App Password is correctly configured
+   - Check that 2-factor authentication is enabled
+   - Verify SMTP/IMAP settings
+
+2. **AI Features Not Working**:
+   - Confirm COHERE_API_KEY environment variable is set
+   - Check API key validity at Cohere dashboard
+   - Restart application after setting environment variables
+
+3. **Database Errors**:
+   - System automatically handles database corruption
+   - Backup files are created automatically
+   - Fresh database is created if corruption detected
+
+### Performance Optimization
+
+- Set auto-refresh interval based on expected reply volume
+- Use manual inbox checks for immediate response needs
+- Monitor database size and consider periodic cleanup for large datasets
+
+## Security Considerations
+
+- Email credentials are stored in plain text - consider encryption for production use
+- API keys should be stored as environment variables
+- Database contains customer information - ensure appropriate access controls
+- Consider rate limiting for high-volume usage
+
+## Contributing
+
+The system is designed to be easily extensible:
+- Add new products by updating the `PRODUCTS` dictionary
+- Modify AI prompts in response generation functions
+- Extend analytics by adding new metrics to the dashboard
+- Customize email templates and response patterns
+
+## License
+
+This project is for educational and demonstration purposes. Ensure compliance with email service provider terms of service and applicable data protection regulations when using with real customer data.
+
+## Support
+
+For issues and questions:
+1. Check the troubleshooting section
+2. Verify all dependencies are installed correctly
+3. Ensure API keys and email settings are properly configured
+4. Review Streamlit logs for detailed error messages
+
+---
+
+**Note**: This system is designed for sales simulation and training purposes. When deploying with real customer data, ensure compliance with privacy regulations and obtain appropriate customer consent for automated communications.
