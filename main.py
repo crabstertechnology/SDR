@@ -31,28 +31,28 @@ try:
 except Exception:
     COHERE_INSTALLED = False
 
-# ---------------------------
-# CONFIG
-# ---------------------------
 import os
 import streamlit as st
 from dotenv import load_dotenv
 
-# Load local .env (only works locally)
 load_dotenv()
 
-# Try Streamlit secrets first (cloud), then .env or environment
-COHERE_API_KEY = (
-    st.secrets.get("COHERE_API_KEY") 
-    if "COHERE_API_KEY" in st.secrets 
-    else os.getenv("COHERE_API_KEY", "")
-)
+# Safe secrets load
+try:
+    COHERE_API_KEY = st.secrets.get("COHERE_API_KEY")
+except Exception:
+    COHERE_API_KEY = None
 
-PRIMARY_MODEL = "command-r7b-12-2024"
-FALLBACK_MODEL = "command"
-PERSONA_INSTRUCTION = (
-    "You are friendly, calm, concise and professional. Keep it warm and helpful."
-)
+# Fallback to .env or system
+if not COHERE_API_KEY:
+    COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
+
+if not COHERE_API_KEY:
+    st.warning("⚠️ No Cohere API key found. Check .env or Streamlit secrets.")
+else:
+    import cohere
+    co = cohere.Client(COHERE_API_KEY)
+    st.success("✅ Cohere AI connected successfully!")
 
 
 # STATIC EMAIL SETTINGS - Cannot be changed
