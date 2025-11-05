@@ -33,16 +33,18 @@ except Exception:
 
 import os
 import streamlit as st
-from dotenv import load_dotenv
+# Safe secrets load
+try:
+    COHERE_API_KEY = st.secrets.get("COHERE_API_KEY")
+except Exception:
+    COHERE_API_KEY = None
 
-# Load .env for local runs
-load_dotenv()
-
-# Try Streamlit secrets first, then environment
-COHERE_API_KEY = st.secrets.get("COHERE_API_KEY", os.getenv("COHERE_API_KEY", ""))
+# Fallback to .env or system
+if not COHERE_API_KEY:
+    COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
 
 if not COHERE_API_KEY:
-    st.warning("⚠️ No Cohere API key found. Please add it to Streamlit secrets or .env file.")
+    st.warning("⚠️ No Cohere API key found. Check .env or Streamlit secrets.")
 else:
     import cohere
     co = cohere.Client(COHERE_API_KEY)
