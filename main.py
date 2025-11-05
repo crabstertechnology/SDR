@@ -34,10 +34,26 @@ except Exception:
 # ---------------------------
 # CONFIG
 # ---------------------------
-COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
+import os
+import streamlit as st
+from dotenv import load_dotenv
+
+# Load local .env (only works locally)
+load_dotenv()
+
+# Try Streamlit secrets first (cloud), then .env or environment
+COHERE_API_KEY = (
+    st.secrets.get("COHERE_API_KEY") 
+    if "COHERE_API_KEY" in st.secrets 
+    else os.getenv("COHERE_API_KEY", "")
+)
+
 PRIMARY_MODEL = "command-r7b-12-2024"
 FALLBACK_MODEL = "command"
-PERSONA_INSTRUCTION = "You are friendly, calm, concise and professional. Keep it warm and helpful."
+PERSONA_INSTRUCTION = (
+    "You are friendly, calm, concise and professional. Keep it warm and helpful."
+)
+
 
 # STATIC EMAIL SETTINGS - Cannot be changed
 STATIC_EMAIL_SETTINGS = {
